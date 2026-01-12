@@ -13,11 +13,13 @@ import { LiveScanOverlay } from "@/components/dashboard/LiveScanOverlay";
 import { CounterfactualGenerator } from "@/components/dashboard/CounterfactualGenerator";
 import { ReportExport } from "@/components/dashboard/ReportExport";
 import { ScanHistory } from "@/components/dashboard/ScanHistory";
-import { AlertTriangle, Shield, Zap, Target, LogOut } from "lucide-react";
+import { ActiveUsers } from "@/components/dashboard/ActiveUsers";
+import { AlertTriangle, Shield, Zap, Target, LogOut, User } from "lucide-react";
 import { analyzeDataset, saveScanToHistory } from "@/lib/aiAnalysis";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 
 // Mock data for demonstration
 const mockHeatmapData = [
@@ -126,6 +128,7 @@ const defaultFeatureData: FeatureRisk[] = [
 
 const Index = () => {
   const { user, signOut } = useAuth();
+  const navigate = useNavigate();
   const [adversarialStrength, setAdversarialStrength] = useState(65);
   const [fairnessDefinition, setFairnessDefinition] = useState("demographic_parity");
   const [enableCounterfactual, setEnableCounterfactual] = useState(true);
@@ -290,8 +293,18 @@ const Index = () => {
             featureCount={datasetInfo.features.length}
           />
           <div className="flex items-center gap-2">
+            <ActiveUsers />
             <ScanHistory onLoadScan={handleLoadScan} />
             <ReportExport datasetName={datasetInfo.name} scanDate={lastScan} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/profile")}
+              className="gap-2"
+            >
+              <User className="w-4 h-4" />
+              Profile
+            </Button>
             <Button
               variant="outline"
               size="sm"
