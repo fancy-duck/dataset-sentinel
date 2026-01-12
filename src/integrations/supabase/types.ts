@@ -58,6 +58,7 @@ export type Database = {
           leakage_severity: number
           robustness_score: number
           row_count: number
+          team_id: string | null
           user_id: string | null
           vulnerability_score: number
         }
@@ -74,6 +75,7 @@ export type Database = {
           leakage_severity?: number
           robustness_score?: number
           row_count?: number
+          team_id?: string | null
           user_id?: string | null
           vulnerability_score?: number
         }
@@ -90,8 +92,76 @@ export type Database = {
           leakage_severity?: number
           robustness_score?: number
           row_count?: number
+          team_id?: string | null
           user_id?: string | null
           vulnerability_score?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scan_history_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      team_members: {
+        Row: {
+          id: string
+          joined_at: string
+          role: string
+          team_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          role?: string
+          team_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          role?: string
+          team_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "team_members_team_id_fkey"
+            columns: ["team_id"]
+            isOneToOne: false
+            referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teams: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -100,7 +170,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      is_team_member: {
+        Args: { _team_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never

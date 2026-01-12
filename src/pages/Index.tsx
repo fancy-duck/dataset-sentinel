@@ -14,7 +14,9 @@ import { CounterfactualGenerator } from "@/components/dashboard/CounterfactualGe
 import { ReportExport } from "@/components/dashboard/ReportExport";
 import { ScanHistory } from "@/components/dashboard/ScanHistory";
 import { ActiveUsers } from "@/components/dashboard/ActiveUsers";
-import { AlertTriangle, Shield, Zap, Target, LogOut, User } from "lucide-react";
+import { LiveCursors } from "@/components/dashboard/LiveCursors";
+import { TeamSelector } from "@/components/dashboard/TeamSelector";
+import { AlertTriangle, Shield, Zap, Target, LogOut, User, Users } from "lucide-react";
 import { analyzeDataset, saveScanToHistory } from "@/lib/aiAnalysis";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
@@ -150,6 +152,7 @@ const Index = () => {
   const [findings, setFindings] = useState(mockFindings);
   const [featureData, setFeatureData] = useState(defaultFeatureData);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
 
   const handleRunTest = async () => {
     setIsRunning(true);
@@ -275,6 +278,9 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background grid-pattern">
+      {/* Live Cursors */}
+      <LiveCursors />
+
       {/* Scanline effect overlay */}
       <div className="fixed inset-0 pointer-events-none scanline opacity-50" />
       
@@ -292,10 +298,23 @@ const Index = () => {
             rowCount={datasetInfo.rows}
             featureCount={datasetInfo.features.length}
           />
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <TeamSelector
+              selectedTeamId={selectedTeamId}
+              onTeamChange={setSelectedTeamId}
+            />
             <ActiveUsers />
             <ScanHistory onLoadScan={handleLoadScan} />
             <ReportExport datasetName={datasetInfo.name} scanDate={lastScan} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => navigate("/teams")}
+              className="gap-2"
+            >
+              <Users className="w-4 h-4" />
+              Teams
+            </Button>
             <Button
               variant="outline"
               size="sm"
