@@ -14,7 +14,54 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      scan_history: {
+        Row: {
+          ai_analysis: string | null
+          bias_exposure: number
+          created_at: string
+          dataset_name: string
+          exploitable_features: number
+          feature_count: number
+          feature_risks: Json | null
+          findings: Json | null
+          id: string
+          leakage_severity: number
+          robustness_score: number
+          row_count: number
+          vulnerability_score: number
+        }
+        Insert: {
+          ai_analysis?: string | null
+          bias_exposure?: number
+          created_at?: string
+          dataset_name: string
+          exploitable_features?: number
+          feature_count?: number
+          feature_risks?: Json | null
+          findings?: Json | null
+          id?: string
+          leakage_severity?: number
+          robustness_score?: number
+          row_count?: number
+          vulnerability_score?: number
+        }
+        Update: {
+          ai_analysis?: string | null
+          bias_exposure?: number
+          created_at?: string
+          dataset_name?: string
+          exploitable_features?: number
+          feature_count?: number
+          feature_risks?: Json | null
+          findings?: Json | null
+          id?: string
+          leakage_severity?: number
+          robustness_score?: number
+          row_count?: number
+          vulnerability_score?: number
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
