@@ -12,7 +12,10 @@ import { FeatureInspector } from "@/components/dashboard/FeatureInspector";
 import { LiveScanOverlay } from "@/components/dashboard/LiveScanOverlay";
 import { CounterfactualGenerator } from "@/components/dashboard/CounterfactualGenerator";
 import { ReportExport } from "@/components/dashboard/ReportExport";
+import { ScanHistory } from "@/components/dashboard/ScanHistory";
 import { AlertTriangle, Shield, Zap, Target } from "lucide-react";
+import { analyzeDataset, saveScanToHistory } from "@/lib/aiAnalysis";
+import { toast } from "sonner";
 
 // Mock data for demonstration
 const mockHeatmapData = [
@@ -42,35 +45,57 @@ const mockBiasData = [
   { category: "Education", value: 45, fullMark: 100 },
 ];
 
-const mockFindings = [
+type Finding = {
+  id: string;
+  type: "leakage" | "spurious" | "exploit";
+  severity: "critical" | "high" | "medium" | "low";
+  feature: string;
+  description: string;
+  accuracy: number;
+};
+
+type FeatureRisk = {
+  name: string;
+  type: "numeric" | "categorical" | "temporal" | "identifier";
+  riskLevel: "critical" | "high" | "medium" | "low" | "safe";
+  leakageScore: number;
+  biasScore: number;
+  spuriousScore: number;
+  importance: number;
+  nullPercent: number;
+  uniqueValues: number;
+  distribution: "normal" | "skewed" | "bimodal" | "uniform";
+};
+
+const mockFindings: Finding[] = [
   {
     id: "1",
-    type: "leakage" as const,
-    severity: "critical" as const,
+    type: "leakage",
+    severity: "critical",
     feature: "user_id",
     description: "User ID can be used to directly look up the target variable through a join with the users table. This represents a critical data leakage pathway.",
     accuracy: 98,
   },
   {
     id: "2",
-    type: "spurious" as const,
-    severity: "high" as const,
+    type: "spurious",
+    severity: "high",
     feature: "zip_code",
     description: "Zip code acts as a proxy for race/ethnicity with 0.82 correlation. Model may learn discriminatory patterns.",
     accuracy: 87,
   },
   {
     id: "3",
-    type: "exploit" as const,
-    severity: "high" as const,
+    type: "exploit",
+    severity: "high",
     feature: "timestamp",
     description: "Adversarial probe achieved 89% accuracy using only timestamp features, indicating severe temporal leakage.",
     accuracy: 89,
   },
   {
     id: "4",
-    type: "spurious" as const,
-    severity: "medium" as const,
+    type: "spurious",
+    severity: "medium",
     feature: "device_type",
     description: "Device type correlates with outcome due to demographic skew in data collection, not causal relationship.",
     accuracy: 71,
@@ -86,15 +111,15 @@ const mockCorrelationData = [
   { feature: "session_len", correlation: 0.38, impact: 0.05, isCausal: true },
 ];
 
-const mockFeatureData = [
-  { name: "user_id", type: "identifier" as const, riskLevel: "critical" as const, leakageScore: 92, biasScore: 15, spuriousScore: 8, importance: 12, nullPercent: 0, uniqueValues: 2847293, distribution: "uniform" as const },
-  { name: "timestamp", type: "temporal" as const, riskLevel: "high" as const, leakageScore: 78, biasScore: 45, spuriousScore: 62, importance: 67, nullPercent: 0.1, uniqueValues: 156892, distribution: "skewed" as const },
-  { name: "zip_code", type: "categorical" as const, riskLevel: "high" as const, leakageScore: 12, biasScore: 85, spuriousScore: 71, importance: 45, nullPercent: 2.3, uniqueValues: 4521, distribution: "skewed" as const },
-  { name: "income", type: "numeric" as const, riskLevel: "medium" as const, leakageScore: 5, biasScore: 67, spuriousScore: 23, importance: 78, nullPercent: 5.2, uniqueValues: 89234, distribution: "normal" as const },
-  { name: "age_bucket", type: "categorical" as const, riskLevel: "medium" as const, leakageScore: 3, biasScore: 58, spuriousScore: 34, importance: 52, nullPercent: 0.8, uniqueValues: 8, distribution: "bimodal" as const },
-  { name: "credit_score", type: "numeric" as const, riskLevel: "low" as const, leakageScore: 2, biasScore: 34, spuriousScore: 12, importance: 89, nullPercent: 1.2, uniqueValues: 450, distribution: "normal" as const },
-  { name: "loan_amount", type: "numeric" as const, riskLevel: "safe" as const, leakageScore: 1, biasScore: 22, spuriousScore: 8, importance: 72, nullPercent: 0, uniqueValues: 15678, distribution: "skewed" as const },
-  { name: "device_type", type: "categorical" as const, riskLevel: "medium" as const, leakageScore: 8, biasScore: 48, spuriousScore: 52, importance: 23, nullPercent: 0.5, uniqueValues: 4, distribution: "uniform" as const },
+const defaultFeatureData: FeatureRisk[] = [
+  { name: "user_id", type: "identifier", riskLevel: "critical", leakageScore: 92, biasScore: 15, spuriousScore: 8, importance: 12, nullPercent: 0, uniqueValues: 2847293, distribution: "uniform" },
+  { name: "timestamp", type: "temporal", riskLevel: "high", leakageScore: 78, biasScore: 45, spuriousScore: 62, importance: 67, nullPercent: 0.1, uniqueValues: 156892, distribution: "skewed" },
+  { name: "zip_code", type: "categorical", riskLevel: "high", leakageScore: 12, biasScore: 85, spuriousScore: 71, importance: 45, nullPercent: 2.3, uniqueValues: 4521, distribution: "skewed" },
+  { name: "income", type: "numeric", riskLevel: "medium", leakageScore: 5, biasScore: 67, spuriousScore: 23, importance: 78, nullPercent: 5.2, uniqueValues: 89234, distribution: "normal" },
+  { name: "age_bucket", type: "categorical", riskLevel: "medium", leakageScore: 3, biasScore: 58, spuriousScore: 34, importance: 52, nullPercent: 0.8, uniqueValues: 8, distribution: "bimodal" },
+  { name: "credit_score", type: "numeric", riskLevel: "low", leakageScore: 2, biasScore: 34, spuriousScore: 12, importance: 89, nullPercent: 1.2, uniqueValues: 450, distribution: "normal" },
+  { name: "loan_amount", type: "numeric", riskLevel: "safe", leakageScore: 1, biasScore: 22, spuriousScore: 8, importance: 72, nullPercent: 0, uniqueValues: 15678, distribution: "skewed" },
+  { name: "device_type", type: "categorical", riskLevel: "medium", leakageScore: 8, biasScore: 48, spuriousScore: 52, importance: 23, nullPercent: 0.5, uniqueValues: 4, distribution: "uniform" },
 ];
 
 const Index = () => {
@@ -106,19 +131,98 @@ const Index = () => {
   const [datasetInfo, setDatasetInfo] = useState({
     name: "credit_risk_v3.parquet",
     rows: 2847293,
-    features: 47,
+    features: ["user_id", "timestamp", "zip_code", "income", "age_bucket", "credit_score", "loan_amount", "device_type"],
   });
   const [lastScan, setLastScan] = useState("2024-01-12 14:32:01 UTC");
+  
+  // Analysis results state
+  const [vulnerabilityScore, setVulnerabilityScore] = useState(73);
+  const [leakageSeverity, setLeakageSeverity] = useState(78);
+  const [biasExposure, setBiasExposure] = useState(64);
+  const [robustnessScore, setRobustnessScore] = useState(42);
+  const [exploitableFeatures, setExploitableFeatures] = useState(12);
+  const [findings, setFindings] = useState(mockFindings);
+  const [featureData, setFeatureData] = useState(defaultFeatureData);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
 
-  const handleRunTest = () => {
+  const handleRunTest = async () => {
     setIsRunning(true);
     setIsScanning(true);
+
+    try {
+      // Call real AI analysis
+      const analysis = await analyzeDataset({
+        datasetName: datasetInfo.name,
+        features: datasetInfo.features,
+        rowCount: datasetInfo.rows,
+        featureCount: datasetInfo.features.length,
+        adversarialStrength,
+        fairnessDefinition,
+      });
+
+      // Update state with AI results
+      setVulnerabilityScore(analysis.vulnerabilityScore || 73);
+      setLeakageSeverity(analysis.leakageSeverity || 78);
+      setBiasExposure(analysis.biasExposure || 64);
+      setRobustnessScore(analysis.robustnessScore || 42);
+      setExploitableFeatures(analysis.exploitableFeatures || 12);
+      setAiSummary(analysis.summary);
+
+      // Update findings if provided
+      if (analysis.findings && analysis.findings.length > 0) {
+        const mappedFindings = analysis.findings.map((f, i) => ({
+          id: String(i + 1),
+          type: f.type as "leakage" | "spurious" | "exploit",
+          severity: f.severity as "critical" | "high" | "medium" | "low",
+          feature: f.feature,
+          description: f.description,
+          accuracy: f.accuracy,
+        }));
+        setFindings(mappedFindings);
+      }
+
+      // Update feature data if provided
+      if (analysis.featureRisks && analysis.featureRisks.length > 0) {
+        const mappedFeatures = analysis.featureRisks.map((f) => ({
+          name: f.name,
+          type: "numeric" as const,
+          riskLevel: f.riskLevel as "critical" | "high" | "medium" | "low" | "safe",
+          leakageScore: f.leakageScore,
+          biasScore: f.biasScore,
+          spuriousScore: f.spuriousScore,
+          importance: Math.floor(Math.random() * 100),
+          nullPercent: Math.random() * 5,
+          uniqueValues: Math.floor(Math.random() * 10000),
+          distribution: "normal" as const,
+        }));
+        setFeatureData(mappedFeatures.length > 0 ? mappedFeatures : defaultFeatureData);
+      }
+
+      // Save to history
+      await saveScanToHistory(
+        datasetInfo.name,
+        datasetInfo.rows,
+        datasetInfo.features.length,
+        analysis
+      );
+
+      setLastScan(new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC");
+      toast.success("AI analysis complete", {
+        description: analysis.summary?.slice(0, 100) + "...",
+      });
+    } catch (error) {
+      console.error("Analysis error:", error);
+      toast.error("Analysis failed", {
+        description: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsScanning(false);
+      setIsRunning(false);
+    }
   };
 
   const handleScanComplete = () => {
-    setIsScanning(false);
-    setIsRunning(false);
-    setLastScan(new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC");
+    // This is now handled in handleRunTest
   };
 
   const handleReset = () => {
@@ -131,8 +235,36 @@ const Index = () => {
     setDatasetInfo({
       name: data.name,
       rows: data.rows,
-      features: data.features.length,
+      features: data.features,
     });
+  };
+
+  const handleLoadScan = (scan: any) => {
+    setDatasetInfo({
+      name: scan.dataset_name,
+      rows: scan.row_count,
+      features: datasetInfo.features,
+    });
+    setVulnerabilityScore(scan.vulnerability_score);
+    setLeakageSeverity(scan.leakage_severity);
+    setBiasExposure(scan.bias_exposure);
+    setRobustnessScore(scan.robustness_score);
+    setExploitableFeatures(scan.exploitable_features);
+    setAiSummary(scan.ai_analysis);
+    setLastScan(new Date(scan.created_at).toISOString().replace("T", " ").slice(0, 19) + " UTC");
+    
+    if (scan.findings && Array.isArray(scan.findings)) {
+      setFindings(scan.findings.map((f: any, i: number) => ({
+        id: String(i + 1),
+        type: f.type || "leakage",
+        severity: f.severity || "medium",
+        feature: f.feature || "unknown",
+        description: f.description || "",
+        accuracy: f.accuracy || 50,
+      })));
+    }
+    
+    toast.success("Loaded scan from history");
   };
 
   return (
@@ -152,39 +284,57 @@ const Index = () => {
             datasetName={datasetInfo.name}
             lastScan={lastScan}
             rowCount={datasetInfo.rows}
-            featureCount={datasetInfo.features}
+            featureCount={datasetInfo.features.length}
           />
-          <ReportExport datasetName={datasetInfo.name} scanDate={lastScan} />
+          <div className="flex items-center gap-2">
+            <ScanHistory onLoadScan={handleLoadScan} />
+            <ReportExport datasetName={datasetInfo.name} scanDate={lastScan} />
+          </div>
         </div>
+
+        {/* AI Summary Banner */}
+        {aiSummary && (
+          <div className="mt-4 p-4 glass-panel glow-border">
+            <div className="flex items-start gap-3">
+              <div className="w-2 h-2 bg-primary rounded-full mt-2 animate-pulse" />
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-primary mb-1">
+                  AI Analysis Summary
+                </h4>
+                <p className="text-sm text-foreground/90">{aiSummary}</p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Top metrics row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
           <MetricCard
             label="Leakage Severity"
-            value="78%"
+            value={`${leakageSeverity}%`}
             icon={Zap}
-            status="danger"
+            status={leakageSeverity >= 70 ? "danger" : leakageSeverity >= 50 ? "warning" : "safe"}
             trend={{ value: 12, direction: "up" }}
           />
           <MetricCard
             label="Bias Exposure"
-            value="64%"
+            value={`${biasExposure}%`}
             icon={AlertTriangle}
-            status="warning"
+            status={biasExposure >= 70 ? "danger" : biasExposure >= 50 ? "warning" : "safe"}
             trend={{ value: 5, direction: "up" }}
           />
           <MetricCard
             label="Robustness Score"
-            value="42%"
+            value={`${robustnessScore}%`}
             icon={Shield}
-            status="warning"
+            status={robustnessScore <= 30 ? "danger" : robustnessScore <= 50 ? "warning" : "safe"}
             trend={{ value: 8, direction: "down" }}
           />
           <MetricCard
             label="Exploitable Features"
-            value="12"
+            value={String(exploitableFeatures)}
             icon={Target}
-            status="danger"
+            status={exploitableFeatures >= 10 ? "danger" : exploitableFeatures >= 5 ? "warning" : "safe"}
           />
         </div>
 
@@ -194,7 +344,7 @@ const Index = () => {
           <div className="lg:col-span-3 space-y-4">
             <DatasetUpload onDatasetLoaded={handleDatasetLoaded} isScanning={isScanning} />
             <VulnerabilityScore
-              score={73}
+              score={vulnerabilityScore}
               label="Dataset Vulnerability Score"
               trend="up"
             />
@@ -223,21 +373,21 @@ const Index = () => {
 
           {/* Right column - Findings & Radar */}
           <div className="lg:col-span-4 space-y-4">
-            <AdversarialFindings findings={mockFindings} />
+            <AdversarialFindings findings={findings} />
             <BiasRadar data={mockBiasData} />
           </div>
         </div>
 
         {/* Bottom row - Feature Inspector & Counterfactual */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-          <FeatureInspector features={mockFeatureData} />
+          <FeatureInspector features={featureData} />
           <CounterfactualGenerator />
         </div>
 
         {/* Footer */}
         <footer className="mt-8 pt-4 border-t border-border/30 flex items-center justify-between">
           <p className="text-[10px] text-muted-foreground font-mono">
-            AUTONOMOUS DATASET RED TEAM v1.0.0
+            AUTONOMOUS DATASET RED TEAM v1.0.0 • Powered by AI
           </p>
           <p className="text-[10px] text-muted-foreground font-mono">
             Last model update: 2024-01-12 • Adversarial probes: 847 • Tests passed: 234/412
