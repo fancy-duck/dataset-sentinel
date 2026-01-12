@@ -13,9 +13,11 @@ import { LiveScanOverlay } from "@/components/dashboard/LiveScanOverlay";
 import { CounterfactualGenerator } from "@/components/dashboard/CounterfactualGenerator";
 import { ReportExport } from "@/components/dashboard/ReportExport";
 import { ScanHistory } from "@/components/dashboard/ScanHistory";
-import { AlertTriangle, Shield, Zap, Target } from "lucide-react";
+import { AlertTriangle, Shield, Zap, Target, LogOut } from "lucide-react";
 import { analyzeDataset, saveScanToHistory } from "@/lib/aiAnalysis";
 import { toast } from "sonner";
+import { useAuth } from "@/hooks/useAuth";
+import { Button } from "@/components/ui/button";
 
 // Mock data for demonstration
 const mockHeatmapData = [
@@ -123,6 +125,7 @@ const defaultFeatureData: FeatureRisk[] = [
 ];
 
 const Index = () => {
+  const { user, signOut } = useAuth();
   const [adversarialStrength, setAdversarialStrength] = useState(65);
   const [fairnessDefinition, setFairnessDefinition] = useState("demographic_parity");
   const [enableCounterfactual, setEnableCounterfactual] = useState(true);
@@ -289,6 +292,15 @@ const Index = () => {
           <div className="flex items-center gap-2">
             <ScanHistory onLoadScan={handleLoadScan} />
             <ReportExport datasetName={datasetInfo.name} scanDate={lastScan} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={signOut}
+              className="gap-2"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </Button>
           </div>
         </div>
 
