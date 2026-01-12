@@ -7,6 +7,11 @@ import { AdversarialFindings } from "@/components/dashboard/AdversarialFindings"
 import { ControlPanel } from "@/components/dashboard/ControlPanel";
 import { SpuriousExplorer } from "@/components/dashboard/SpuriousExplorer";
 import { MetricCard } from "@/components/dashboard/MetricCard";
+import { DatasetUpload } from "@/components/dashboard/DatasetUpload";
+import { FeatureInspector } from "@/components/dashboard/FeatureInspector";
+import { LiveScanOverlay } from "@/components/dashboard/LiveScanOverlay";
+import { CounterfactualGenerator } from "@/components/dashboard/CounterfactualGenerator";
+import { ReportExport } from "@/components/dashboard/ReportExport";
 import { AlertTriangle, Shield, Zap, Target } from "lucide-react";
 
 // Mock data for demonstration
@@ -81,21 +86,53 @@ const mockCorrelationData = [
   { feature: "session_len", correlation: 0.38, impact: 0.05, isCausal: true },
 ];
 
+const mockFeatureData = [
+  { name: "user_id", type: "identifier" as const, riskLevel: "critical" as const, leakageScore: 92, biasScore: 15, spuriousScore: 8, importance: 12, nullPercent: 0, uniqueValues: 2847293, distribution: "uniform" as const },
+  { name: "timestamp", type: "temporal" as const, riskLevel: "high" as const, leakageScore: 78, biasScore: 45, spuriousScore: 62, importance: 67, nullPercent: 0.1, uniqueValues: 156892, distribution: "skewed" as const },
+  { name: "zip_code", type: "categorical" as const, riskLevel: "high" as const, leakageScore: 12, biasScore: 85, spuriousScore: 71, importance: 45, nullPercent: 2.3, uniqueValues: 4521, distribution: "skewed" as const },
+  { name: "income", type: "numeric" as const, riskLevel: "medium" as const, leakageScore: 5, biasScore: 67, spuriousScore: 23, importance: 78, nullPercent: 5.2, uniqueValues: 89234, distribution: "normal" as const },
+  { name: "age_bucket", type: "categorical" as const, riskLevel: "medium" as const, leakageScore: 3, biasScore: 58, spuriousScore: 34, importance: 52, nullPercent: 0.8, uniqueValues: 8, distribution: "bimodal" as const },
+  { name: "credit_score", type: "numeric" as const, riskLevel: "low" as const, leakageScore: 2, biasScore: 34, spuriousScore: 12, importance: 89, nullPercent: 1.2, uniqueValues: 450, distribution: "normal" as const },
+  { name: "loan_amount", type: "numeric" as const, riskLevel: "safe" as const, leakageScore: 1, biasScore: 22, spuriousScore: 8, importance: 72, nullPercent: 0, uniqueValues: 15678, distribution: "skewed" as const },
+  { name: "device_type", type: "categorical" as const, riskLevel: "medium" as const, leakageScore: 8, biasScore: 48, spuriousScore: 52, importance: 23, nullPercent: 0.5, uniqueValues: 4, distribution: "uniform" as const },
+];
+
 const Index = () => {
   const [adversarialStrength, setAdversarialStrength] = useState(65);
   const [fairnessDefinition, setFairnessDefinition] = useState("demographic_parity");
   const [enableCounterfactual, setEnableCounterfactual] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
+  const [isScanning, setIsScanning] = useState(false);
+  const [datasetInfo, setDatasetInfo] = useState({
+    name: "credit_risk_v3.parquet",
+    rows: 2847293,
+    features: 47,
+  });
+  const [lastScan, setLastScan] = useState("2024-01-12 14:32:01 UTC");
 
   const handleRunTest = () => {
     setIsRunning(true);
-    setTimeout(() => setIsRunning(false), 2000);
+    setIsScanning(true);
+  };
+
+  const handleScanComplete = () => {
+    setIsScanning(false);
+    setIsRunning(false);
+    setLastScan(new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC");
   };
 
   const handleReset = () => {
     setAdversarialStrength(50);
     setFairnessDefinition("demographic_parity");
     setEnableCounterfactual(false);
+  };
+
+  const handleDatasetLoaded = (data: { name: string; rows: number; features: string[] }) => {
+    setDatasetInfo({
+      name: data.name,
+      rows: data.rows,
+      features: data.features.length,
+    });
   };
 
   return (
@@ -106,13 +143,19 @@ const Index = () => {
       {/* Radial gradient overlay */}
       <div className="fixed inset-0 pointer-events-none bg-gradient-radial" />
 
+      {/* Live Scan Overlay */}
+      <LiveScanOverlay isActive={isScanning} onComplete={handleScanComplete} />
+
       <div className="relative z-10 p-6 max-w-[1800px] mx-auto">
-        <DashboardHeader
-          datasetName="credit_risk_v3.parquet"
-          lastScan="2024-01-12 14:32:01 UTC"
-          rowCount={2847293}
-          featureCount={47}
-        />
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <DashboardHeader
+            datasetName={datasetInfo.name}
+            lastScan={lastScan}
+            rowCount={datasetInfo.rows}
+            featureCount={datasetInfo.features}
+          />
+          <ReportExport datasetName={datasetInfo.name} scanDate={lastScan} />
+        </div>
 
         {/* Top metrics row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
@@ -147,8 +190,9 @@ const Index = () => {
 
         {/* Main dashboard grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 mt-6">
-          {/* Left column - Scores */}
+          {/* Left column - Upload, Scores, Controls */}
           <div className="lg:col-span-3 space-y-4">
+            <DatasetUpload onDatasetLoaded={handleDatasetLoaded} isScanning={isScanning} />
             <VulnerabilityScore
               score={73}
               label="Dataset Vulnerability Score"
@@ -167,16 +211,14 @@ const Index = () => {
             />
           </div>
 
-          {/* Center column - Heatmap */}
-          <div className="lg:col-span-5">
+          {/* Center column - Heatmap & Explorer */}
+          <div className="lg:col-span-5 space-y-4">
             <RiskHeatmap
               data={mockHeatmapData}
               features={["user_id", "timestamp", "zip_code", "income", "age_bucket"]}
               riskTypes={["Leakage", "Bias", "Spurious"]}
             />
-            <div className="mt-4">
-              <SpuriousExplorer data={mockCorrelationData} />
-            </div>
+            <SpuriousExplorer data={mockCorrelationData} />
           </div>
 
           {/* Right column - Findings & Radar */}
@@ -184,6 +226,12 @@ const Index = () => {
             <AdversarialFindings findings={mockFindings} />
             <BiasRadar data={mockBiasData} />
           </div>
+        </div>
+
+        {/* Bottom row - Feature Inspector & Counterfactual */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
+          <FeatureInspector features={mockFeatureData} />
+          <CounterfactualGenerator />
         </div>
 
         {/* Footer */}
