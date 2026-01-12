@@ -28,6 +28,7 @@ export type Database = {
           leakage_severity: number
           robustness_score: number
           row_count: number
+          user_id: string | null
           vulnerability_score: number
         }
         Insert: {
@@ -43,6 +44,7 @@ export type Database = {
           leakage_severity?: number
           robustness_score?: number
           row_count?: number
+          user_id?: string | null
           vulnerability_score?: number
         }
         Update: {
@@ -58,6 +60,7 @@ export type Database = {
           leakage_severity?: number
           robustness_score?: number
           row_count?: number
+          user_id?: string | null
           vulnerability_score?: number
         }
         Relationships: []

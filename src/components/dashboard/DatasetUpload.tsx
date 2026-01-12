@@ -2,9 +2,10 @@ import { useState, useCallback } from "react";
 import { Upload, FileText, X, CheckCircle, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import Papa from "papaparse";
 
 interface DatasetUploadProps {
-  onDatasetLoaded: (data: { name: string; rows: number; features: string[] }) => void;
+  onDatasetLoaded: (data: { name: string; rows: number; features: string[]; sampleData?: Record<string, any>[] }) => void;
   isScanning?: boolean;
 }
 
@@ -17,48 +18,169 @@ export function DatasetUpload({ onDatasetLoaded, isScanning = false }: DatasetUp
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const simulateUpload = useCallback((file: File) => {
+  const parseCSV = useCallback((file: File) => {
     setFileName(file.name);
     setStatus("uploading");
     setProgress(0);
     setError(null);
 
-    // Simulate upload progress
+    // Simulate upload progress while reading
     const uploadInterval = setInterval(() => {
       setProgress((prev) => {
-        if (prev >= 100) {
+        if (prev >= 50) {
           clearInterval(uploadInterval);
-          return 100;
+          return 50;
         }
-        return prev + Math.random() * 15;
+        return prev + 10;
       });
     }, 100);
 
-    setTimeout(() => {
-      clearInterval(uploadInterval);
-      setProgress(100);
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      preview: 1000, // Parse first 1000 rows for preview
+      complete: (results) => {
+        clearInterval(uploadInterval);
+        setProgress(75);
+        setStatus("processing");
+
+        setTimeout(() => {
+          const headers = results.meta.fields || [];
+          const rowCount = results.data.length;
+          const sampleData = results.data.slice(0, 100) as Record<string, any>[];
+
+          // Estimate total rows from file size
+          const avgRowSize = file.size / Math.max(rowCount, 1);
+          const estimatedRows = Math.floor(file.size / avgRowSize);
+
+          setProgress(100);
+          setStatus("success");
+          onDatasetLoaded({
+            name: file.name,
+            rows: estimatedRows > 1000 ? estimatedRows : rowCount,
+            features: headers,
+            sampleData,
+          });
+        }, 500);
+      },
+      error: (error) => {
+        clearInterval(uploadInterval);
+        setError(error.message);
+        setStatus("error");
+      },
+    });
+  }, [onDatasetLoaded]);
+
+  const parseJSON = useCallback((file: File) => {
+    setFileName(file.name);
+    setStatus("uploading");
+    setProgress(0);
+    setError(null);
+
+    const reader = new FileReader();
+    
+    reader.onprogress = (e) => {
+      if (e.lengthComputable) {
+        setProgress((e.loaded / e.total) * 50);
+      }
+    };
+
+    reader.onload = (e) => {
       setStatus("processing");
+      setProgress(75);
 
-      // Simulate processing
-      setTimeout(() => {
-        // Generate mock features based on file
-        const mockFeatures = [
-          "user_id", "timestamp", "age", "income", "zip_code",
-          "education", "occupation", "marital_status", "credit_score",
-          "loan_amount", "interest_rate", "term_months", "default_risk"
-        ];
+      try {
+        const text = e.target?.result as string;
+        const parsed = JSON.parse(text);
+        let data: Record<string, any>[];
+        
+        // Handle both array and object with data property
+        if (Array.isArray(parsed)) {
+          data = parsed;
+        } else if (parsed && typeof parsed === 'object' && 'data' in parsed && Array.isArray(parsed.data)) {
+          data = parsed.data;
+        } else {
+          throw new Error("JSON must be an array of objects");
+        }
 
-        const mockRows = Math.floor(Math.random() * 5000000) + 100000;
+        if (data.length === 0) {
+          throw new Error("JSON file contains no data");
+        }
 
+        const headers = Object.keys(data[0]);
+        const sampleData = data.slice(0, 100);
+        setProgress(100);
         setStatus("success");
         onDatasetLoaded({
           name: file.name,
-          rows: mockRows,
-          features: mockFeatures,
+          rows: data.length,
+          features: headers,
+          sampleData,
         });
-      }, 1500);
-    }, 1200);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to parse JSON");
+        setStatus("error");
+      }
+    };
+
+    reader.onerror = () => {
+      setError("Failed to read file");
+      setStatus("error");
+    };
+
+    reader.readAsText(file);
   }, [onDatasetLoaded]);
+
+  const handleFile = useCallback((file: File) => {
+    const ext = file.name.substring(file.name.lastIndexOf(".")).toLowerCase();
+    
+    if (ext === ".csv") {
+      parseCSV(file);
+    } else if (ext === ".json") {
+      parseJSON(file);
+    } else if (ext === ".parquet" || ext === ".xlsx") {
+      // For parquet and xlsx, simulate parsing (would need server-side)
+      setFileName(file.name);
+      setStatus("uploading");
+      setProgress(0);
+      setError(null);
+
+      const uploadInterval = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 100) {
+            clearInterval(uploadInterval);
+            return 100;
+          }
+          return prev + 15;
+        });
+      }, 100);
+
+      setTimeout(() => {
+        clearInterval(uploadInterval);
+        setProgress(100);
+        setStatus("processing");
+
+        setTimeout(() => {
+          // Generate mock features for unsupported formats
+          const mockFeatures = [
+            "id", "timestamp", "category", "value", "user_id",
+            "status", "amount", "description"
+          ];
+          const mockRows = Math.floor(Math.random() * 50000) + 10000;
+
+          setStatus("success");
+          onDatasetLoaded({
+            name: file.name,
+            rows: mockRows,
+            features: mockFeatures,
+          });
+        }, 800);
+      }, 800);
+    } else {
+      setError("Invalid file type. Supported: CSV, JSON, Parquet, XLSX");
+      setStatus("error");
+    }
+  }, [parseCSV, parseJSON, onDatasetLoaded]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -66,23 +188,16 @@ export function DatasetUpload({ onDatasetLoaded, isScanning = false }: DatasetUp
 
     const file = e.dataTransfer.files[0];
     if (file) {
-      const validTypes = [".csv", ".json", ".parquet", ".xlsx"];
-      const ext = file.name.substring(file.name.lastIndexOf("."));
-      if (!validTypes.includes(ext)) {
-        setError("Invalid file type. Supported: CSV, JSON, Parquet, XLSX");
-        setStatus("error");
-        return;
-      }
-      simulateUpload(file);
+      handleFile(file);
     }
-  }, [simulateUpload]);
+  }, [handleFile]);
 
   const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      simulateUpload(file);
+      handleFile(file);
     }
-  }, [simulateUpload]);
+  }, [handleFile]);
 
   const handleReset = () => {
     setStatus("idle");
@@ -150,15 +265,15 @@ export function DatasetUpload({ onDatasetLoaded, isScanning = false }: DatasetUp
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-foreground truncate">{fileName}</p>
               <p className="text-xs text-muted-foreground">
-                {status === "uploading" ? "Uploading..." : "Processing & profiling..."}
+                {status === "uploading" ? "Reading file..." : "Parsing & analyzing schema..."}
               </p>
             </div>
           </div>
-          <Progress value={status === "processing" ? 100 : progress} className="h-1.5" />
+          <Progress value={progress} className="h-1.5" />
           {status === "processing" && (
             <div className="flex items-center gap-2 text-xs text-primary">
               <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              Analyzing schema & detecting features...
+              Extracting column headers & detecting types...
             </div>
           )}
         </div>
@@ -169,7 +284,7 @@ export function DatasetUpload({ onDatasetLoaded, isScanning = false }: DatasetUp
           <CheckCircle className="w-5 h-5 text-success" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground truncate">{fileName}</p>
-            <p className="text-xs text-success">Dataset loaded successfully</p>
+            <p className="text-xs text-success">Dataset parsed successfully</p>
           </div>
         </div>
       )}

@@ -60,7 +60,14 @@ export async function saveScanToHistory(
   featureCount: number,
   analysis: AnalysisResult
 ) {
-  console.log('Saving scan to history:', { datasetName, rowCount, featureCount });
+  // Get current user
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  if (!user) {
+    throw new Error('User must be authenticated to save scans');
+  }
+
+  console.log('Saving scan to history:', { datasetName, rowCount, featureCount, userId: user.id });
 
   const { data, error } = await supabase
     .from('scan_history')
@@ -76,6 +83,7 @@ export async function saveScanToHistory(
       ai_analysis: analysis.summary,
       findings: analysis.findings,
       feature_risks: analysis.featureRisks,
+      user_id: user.id,
     })
     .select()
     .single();
