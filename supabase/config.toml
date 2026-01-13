@@ -1,4 +1,0 @@
-project_id = "ksgnikvaurhovdqbpkaw"
-
-[functions.analyze-dataset]
-verify_jwt = false
