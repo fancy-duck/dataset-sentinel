@@ -16,7 +16,7 @@ export function DashboardHeader({ datasetName, lastScan, rowCount, featureCount 
         </div>
         <div>
           <h1 className="text-xl font-bold tracking-tight text-foreground">
-            Autonomous Dataset Red Team
+            Dataset Sentinel
           </h1>
           <p className="text-sm text-muted-foreground mt-0.5">
             AI-Powered Dataset Vulnerability Scanner
